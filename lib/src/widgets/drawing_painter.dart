@@ -25,20 +25,28 @@ class DrawingPainter extends CustomPainter {
 
       // Draw selection handles at endpoints for selected drawings
       if (drawing.isSelected) {
-        Paint handlePaint = Paint()
+        Paint handleOuterPaint = Paint()
           ..color = Colors.blue
           ..style = PaintingStyle.fill;
 
+        Paint handleInnerPaint = Paint()
+          ..color = Colors.white
+          ..style = PaintingStyle.fill;
+
+        Paint handleBorderPaint = Paint()
+          ..color = Colors.blue.withOpacity(0.3)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.0;
+
+        // Draw handles only at actual endpoints (not null separators)
         for (var point in drawing.points) {
-          if (point != null) {
-            canvas.drawCircle(point, 6.0, handlePaint);
-            canvas.drawCircle(
-              point,
-              4.0,
-              Paint()
-                ..color = Colors.white
-                ..style = PaintingStyle.fill,
-            );
+          if (point != null && point != drawing.points.last) {
+            // Draw outer glow/border for better visibility
+            canvas.drawCircle(point, 10.0, handleBorderPaint);
+            // Draw outer circle
+            canvas.drawCircle(point, 8.0, handleOuterPaint);
+            // Draw inner circle
+            canvas.drawCircle(point, 5.0, handleInnerPaint);
           }
         }
       }
@@ -47,7 +55,9 @@ class DrawingPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(DrawingPainter oldDelegate) {
-    return drawings != oldDelegate.drawings;
+    // Always repaint since Drawing instances are recreated on each update
+    // This ensures smooth real-time updates during dragging
+    return true;
   }
 }
 

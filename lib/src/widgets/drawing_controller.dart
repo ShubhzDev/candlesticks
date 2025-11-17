@@ -10,6 +10,7 @@ class DrawingController extends ChangeNotifier {
   int _drawingCounter = 0;
   Drawing? _selectedDrawing;
   Offset? _dragOffset;
+  int? _draggingEndpointIndex; // Track which endpoint is being dragged
 
   List<Drawing> get drawings => List.unmodifiable(_drawings);
   bool get isDrawingMode => _isDrawingMode;
@@ -37,11 +38,22 @@ class DrawingController extends ChangeNotifier {
       );
       notifyListeners();
     } else {
-      // Selection/Move mode: check if tapping on a line
+      // Selection/Move mode: check if tapping on an endpoint first
+      if (_selectedDrawing != null) {
+        int? endpointIndex = _findEndpointNearPoint(_selectedDrawing!, point);
+        if (endpointIndex != null) {
+          // Start dragging an endpoint
+          _draggingEndpointIndex = endpointIndex;
+          _dragOffset = point;
+          return; // Don't notify yet, wait for actual movement
+        }
+      }
+
+      // Check if tapping on a line
       Drawing? tappedDrawing = _findDrawingNearPoint(point);
       if (tappedDrawing != null) {
         if (_selectedDrawing == tappedDrawing) {
-          // Start dragging the selected line
+          // Start dragging the entire selected line
           _dragOffset = point;
         } else {
           // Select this line
@@ -66,10 +78,16 @@ class DrawingController extends ChangeNotifier {
       );
       notifyListeners();
     } else if (!_isDrawingMode && _selectedDrawing != null && _dragOffset != null) {
-      // Move the selected line
       Offset delta = point - _dragOffset!;
       _dragOffset = point;
-      moveSelectedDrawing(delta);
+
+      if (_draggingEndpointIndex != null) {
+        // Dragging an endpoint - update only that endpoint
+        moveEndpoint(delta);
+      } else {
+        // Move the entire selected line
+        moveSelectedDrawing(delta);
+      }
     }
   }
 
@@ -81,6 +99,7 @@ class DrawingController extends ChangeNotifier {
       notifyListeners();
     } else if (!_isDrawingMode) {
       _dragOffset = null;
+      _draggingEndpointIndex = null;
     }
   }
 
@@ -109,6 +128,7 @@ class DrawingController extends ChangeNotifier {
     );
     _selectedDrawing = null;
     _dragOffset = null;
+    _draggingEndpointIndex = null;
     notifyListeners();
   }
 
@@ -178,6 +198,40 @@ class DrawingController extends ChangeNotifier {
     return math.sqrt(
       math.pow(point.dx - nearestX, 2) + math.pow(point.dy - nearestY, 2)
     );
+  }
+
+  /// Find if a point is near any endpoint of a drawing
+  /// Returns the index of the endpoint (0 for start, 1 for end), or null if not near any
+  int? _findEndpointNearPoint(Drawing drawing, Offset point, {double threshold = 15.0}) {
+    for (int i = 0; i < drawing.points.length; i++) {
+      if (drawing.points[i] != null && drawing.points[i] != drawing.points.last) {
+        double distance = math.sqrt(
+          math.pow(point.dx - drawing.points[i]!.dx, 2) +
+          math.pow(point.dy - drawing.points[i]!.dy, 2)
+        );
+        if (distance < threshold) {
+          return i;
+        }
+      }
+    }
+    return null;
+  }
+
+  /// Move a specific endpoint of the selected drawing
+  void moveEndpoint(Offset delta) {
+    if (_selectedDrawing == null || _draggingEndpointIndex == null) return;
+
+    int index = _drawings.indexWhere((d) => d == _selectedDrawing);
+    if (index != -1) {
+      List<Offset?> newPoints = List.from(_drawings[index].points);
+      if (_draggingEndpointIndex! < newPoints.length && newPoints[_draggingEndpointIndex!] != null) {
+        newPoints[_draggingEndpointIndex!] = newPoints[_draggingEndpointIndex!]! + delta;
+
+        _drawings[index] = _drawings[index].copyWith(points: newPoints);
+        _selectedDrawing = _drawings[index];
+        notifyListeners();
+      }
+    }
   }
 
   void removeDrawing(String name) {
