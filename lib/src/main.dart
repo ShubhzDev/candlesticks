@@ -4,6 +4,9 @@ import 'package:candlesticks/src/models/main_window_indicator.dart';
 import 'package:candlesticks/src/widgets/mobile_chart.dart';
 import 'package:candlesticks/src/widgets/desktop_chart.dart';
 import 'package:candlesticks/src/widgets/toolbar.dart';
+import 'package:candlesticks/src/widgets/drawing_controller.dart';
+import 'package:candlesticks/src/widgets/drawing_painter.dart';
+import 'package:candlesticks/src/widgets/drawings_panel.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'dart:io' show Platform;
@@ -46,6 +49,9 @@ class Candlesticks extends StatefulWidget {
 
   final CandleSticksStyle? style;
 
+  // DRAWING FEATURE: Controller for managing drawings
+  final DrawingController? drawingController;
+
   const Candlesticks({
     Key? key,
     required this.candles,
@@ -57,6 +63,7 @@ class Candlesticks extends StatefulWidget {
     this.indicators,
     this.onRemoveIndicator,
     this.style,
+    this.drawingController, // DRAWING FEATURE
   })  : assert(candles.length == 0 || candles.length > 1,
             "Please provide at least 2 candles"),
         super(key: key);
@@ -184,11 +191,54 @@ class _CandlesticksState extends State<Candlesticks> {
               tween: Tween(begin: 6.toDouble(), end: candleWidth),
               duration: Duration(milliseconds: 120),
               builder: (_, double width, __) {
-                if (kIsWeb ||
+                // DRAWING FEATURE: Wrap chart in drawing layer
+                final chartWidget = kIsWeb ||
                     Platform.isMacOS ||
                     Platform.isWindows ||
-                    Platform.isLinux) {
-                  return DesktopChart(
+                    Platform.isLinux
+                  ? DesktopChart(
+                    style: style,
+                    onRemoveIndicator: widget.onRemoveIndicator,
+                    mainWindowDataContainer: mainWindowDataContainer!,
+                    chartAdjust: widget.chartAdjust,
+                    onScaleUpdate: (double scale) {
+                      scale = max(0.90, scale);
+                      scale = min(1.1, scale);
+                      setState(() {
+                        candleWidth *= scale;
+                        candleWidth = min(candleWidth, 20);
+                        candleWidth = max(candleWidth, 2);
+                      });
+                    },
+                    onPanEnd: () {
+                      lastIndex = index;
+                    },
+                    onHorizontalDragUpdate: (double x) {
+                      setState(() {
+                        x = x - lastX;
+                        index = lastIndex + x ~/ candleWidth;
+                        index = max(index, -10);
+                        index = min(index, widget.candles.length - 1);
+                      });
+                    },
+                    onPanDown: (double value) {
+                      lastX = value;
+                      lastIndex = index;
+                    },
+                    onReachEnd: () {
+                      if (isCallingLoadMore == false &&
+                          widget.onLoadMoreCandles != null) {
+                        isCallingLoadMore = true;
+                        widget.onLoadMoreCandles!().then((_) {
+                          isCallingLoadMore = false;
+                        });
+                      }
+                    },
+                    candleWidth: width,
+                    candles: widget.candles,
+                    index: index,
+                  )
+                  : MobileChart(
                     style: style,
                     onRemoveIndicator: widget.onRemoveIndicator,
                     mainWindowDataContainer: mainWindowDataContainer!,
@@ -230,50 +280,58 @@ class _CandlesticksState extends State<Candlesticks> {
                     candles: widget.candles,
                     index: index,
                   );
-                } else {
-                  return MobileChart(
-                    style: style,
-                    onRemoveIndicator: widget.onRemoveIndicator,
-                    mainWindowDataContainer: mainWindowDataContainer!,
-                    chartAdjust: widget.chartAdjust,
-                    onScaleUpdate: (double scale) {
-                      scale = max(0.90, scale);
-                      scale = min(1.1, scale);
-                      setState(() {
-                        candleWidth *= scale;
-                        candleWidth = min(candleWidth, 20);
-                        candleWidth = max(candleWidth, 2);
-                      });
-                    },
-                    onPanEnd: () {
-                      lastIndex = index;
-                    },
-                    onHorizontalDragUpdate: (double x) {
-                      setState(() {
-                        x = x - lastX;
-                        index = lastIndex + x ~/ candleWidth;
-                        index = max(index, -10);
-                        index = min(index, widget.candles.length - 1);
-                      });
-                    },
-                    onPanDown: (double value) {
-                      lastX = value;
-                      lastIndex = index;
-                    },
-                    onReachEnd: () {
-                      if (isCallingLoadMore == false &&
-                          widget.onLoadMoreCandles != null) {
-                        isCallingLoadMore = true;
-                        widget.onLoadMoreCandles!().then((_) {
-                          isCallingLoadMore = false;
-                        });
-                      }
-                    },
-                    candleWidth: width,
-                    candles: widget.candles,
-                    index: index,
+
+                // DRAWING FEATURE: Wrap chart with drawing overlay if controller provided
+                if (widget.drawingController != null) {
+                  return Stack(
+                    children: [
+                      chartWidget,
+                      // Drawing overlay with gesture detection (active for both drawing and selection/move)
+                      Positioned.fill(
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.translucent,
+                          onPanStart: (details) {
+                            widget.drawingController!.startDrawing(details.localPosition);
+                          },
+                          onPanUpdate: (details) {
+                            widget.drawingController!.updateDrawing(details.localPosition);
+                          },
+                          onPanEnd: (details) {
+                            widget.drawingController!.endDrawing();
+                          },
+                          child: Container(color: Colors.transparent),
+                        ),
+                      ),
+                      // Drawing painter (always visible)
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          child: AnimatedBuilder(
+                            animation: widget.drawingController!,
+                            builder: (context, child) {
+                              return CustomPaint(
+                                painter: DrawingPainter(
+                                  widget.drawingController!.getAllDrawings(),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                      // Drawings panel (shows list of drawings with remove buttons)
+                      if (widget.drawingController!.drawings.isNotEmpty)
+                        Positioned(
+                          top: 30,
+                          left: 12,
+                          child: DrawingsPanel(
+                            style: style,
+                            drawings: widget.drawingController!.drawings,
+                          ),
+                        ),
+                    ],
                   );
                 }
+
+                return chartWidget;
               },
             ),
           ),

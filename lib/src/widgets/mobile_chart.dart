@@ -153,6 +153,7 @@ class _MobileChartState extends State<MobileChart> {
                                 widget.index,
                             0),
                         widget.candles.length - 1)];
+
                 return Container(
                   color: widget.style.background,
                   child: Stack(
@@ -179,6 +180,9 @@ class _MobileChartState extends State<MobileChart> {
                                   chartHeight: chartHeight,
                                   lastCandle: widget.candles[
                                       widget.index < 0 ? 0 : widget.index],
+                                  candles: widget.candles,
+                                  candlesStartIndex: candlesStartIndex,
+                                  candlesEndIndex: candlesEndIndex,
                                   onScale: (delta) {
                                     if (manualScaleHigh == null) {
                                       manualScaleHigh = candlesHighPrice;
@@ -449,7 +453,7 @@ class _MobileChartState extends State<MobileChart> {
                         child: ElevatedButton(
                           style: ElevatedButton.styleFrom(
                             padding: EdgeInsets.zero,
-                            primary: widget.style.hoverIndicatorBackgroundColor,
+                            backgroundColor: widget.style.hoverIndicatorBackgroundColor,
                           ),
                           child: Text(
                             "Auto",

@@ -14,6 +14,9 @@ class PriceColumn extends StatefulWidget {
     required this.lastCandle,
     required this.onScale,
     required this.style,
+    this.candles,
+    this.candlesStartIndex,
+    this.candlesEndIndex,
   }) : super(key: key);
 
   final double low;
@@ -23,6 +26,9 @@ class PriceColumn extends StatefulWidget {
   final Candle lastCandle;
   final void Function(double) onScale;
   final CandleSticksStyle style;
+  final List<Candle>? candles;
+  final int? candlesStartIndex;
+  final int? candlesEndIndex;
 
   @override
   State<PriceColumn> createState() => _PriceColumnState();
@@ -49,6 +55,39 @@ class _PriceColumnState extends State<PriceColumn> {
     final double top = -priceTileHeight / priceScale * (newHigh - widget.high) +
         MAIN_CHART_VERTICAL_PADDING -
         priceTileHeight / 2;
+
+    // HIGH/LOW WICK MARKERS - Calculate marker positions
+    double? highMarkerY;
+    double? lowMarkerY;
+    
+    if (widget.candles != null && 
+        widget.candlesStartIndex != null && 
+        widget.candlesEndIndex != null) {
+      
+      double? highestWick;
+      double? lowestWick;
+      
+      for (int i = widget.candlesStartIndex!; i <= widget.candlesEndIndex!; i++) {
+          if (highestWick == null || widget.candles![i].high > highestWick) {
+            highestWick = widget.candles![i].high;
+          }
+          if (lowestWick == null || widget.candles![i].low < lowestWick) {
+            lowestWick = widget.candles![i].low;
+          }
+      }
+      
+      if (highestWick != null && lowestWick != null) {
+        double priceRange = widget.high - widget.low;
+        if (priceRange > 0) {
+          highMarkerY = MAIN_CHART_VERTICAL_PADDING + 
+              ((widget.high - highestWick) / priceRange) * widget.chartHeight;
+          lowMarkerY = MAIN_CHART_VERTICAL_PADDING + 
+              ((widget.high - lowestWick) / priceRange) * widget.chartHeight;
+        }
+      }
+    }
+    // END HIGH/LOW WICK MARKERS CALCULATION
+
     return GestureDetector(
       onVerticalDragUpdate: (details) {
         widget.onScale(details.delta.dy);
@@ -123,6 +162,51 @@ class _PriceColumnState extends State<PriceColumn> {
                 ],
               ),
             ),
+            // HIGH/LOW WICK MARKERS - Display H marker at highest wick
+            if (highMarkerY != null)
+              Positioned(
+                right: 0,
+                top: highMarkerY - 18,
+                child: Container(
+                  padding: EdgeInsets.symmetric(horizontal: 3, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Colors.red,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: Colors.white, width: 1.5),
+                  ),
+                  child: Text(
+                    'High ${HelperFunctions.priceToString(widget.high)}',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+            // HIGH/LOW WICK MARKERS - Display L marker at lowest wick
+            if (lowMarkerY != null)
+              Positioned(
+                right: 0,
+                top: lowMarkerY - 18,
+                child: Container(
+                  padding: EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Colors.green,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: Colors.white, width: 1.5),
+                  ),
+                  child: Text(
+                    'Low ${HelperFunctions.priceToString(widget.low)}',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+            // END HIGH/LOW WICK MARKERS
           ],
         ),
       ),
